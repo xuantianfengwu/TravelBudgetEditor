@@ -1,0 +1,1478 @@
+<html lang="zh-CN"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>旅行预算规划助手</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+    <!-- 引入日历选择器库 -->
+    <link href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/l10n/zh.js"></script>
+    <!-- 引入SheetJS库用于Excel导出 -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3B82F6',
+                        secondary: '#10B981',
+                        accent: '#F59E0B',
+                        dark: '#1E293B',
+                        light: '#F8FAFC'
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .card-shadow {
+                box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            }
+            .hover-lift {
+                transition: transform 0.3s ease, box-shadow 0.3s ease;
+            }
+            .hover-lift:hover {
+                transform: translateY(-5px);
+                box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            }
+            .animate-fade-in {
+                animation: fadeIn 0.5s ease-in-out;
+            }
+            @keyframes fadeIn {
+                from { opacity: 0; transform: translateY(10px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+            .input-focus {
+                @apply focus:ring-2 focus:ring-primary/50 focus:border-primary focus:outline-none;
+            }
+            .merge-header {
+                background-color: #f3f4f6;
+            }
+            .item-input {
+                min-height: 40px;
+                max-height: 120px;
+                resize: vertical;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .item-input:focus {
+                white-space: normal;
+                overflow: auto;
+                text-overflow: clip;
+            }
+            .amount-input {
+                background-color: #f9fafb;
+            }
+            /* Excel风格表格样式 */
+            .excel-table {
+                border-collapse: collapse;
+            }
+            .excel-table th, 
+            .excel-table td {
+                border: 1px solid #e5e7eb;
+                padding: 0;
+            }
+            .excel-table th {
+                background-color: #f9fafb;
+                font-weight: 600;
+            }
+            .excel-cell {
+                padding: 4px 8px;
+                height: 48px;
+                box-sizing: border-box;
+            }
+            .category-header {
+                background-color: #f1f5f9;
+                font-weight: 500;
+            }
+            /* 行前准备行样式 */
+            .preparation-row {
+                background-color: #f0f9ff;
+            }
+            /* 为日历选择器添加必要样式 */
+            #dateRangePicker {
+                position: relative;
+                z-index: 100 !important;
+            }
+            .flatpickr-input {
+                width: 100% !important;
+                padding: 0.5rem !important;
+                border: 1px solid #d1d5db !important;
+                border-radius: 0.5rem !important;
+            }
+            /* 加载动画 */
+            .loader {
+                border-top-color: #3B82F6;
+                animation: spinner 0.6s linear infinite;
+            }
+            @keyframes spinner {
+                to { transform: rotate(360deg); }
+            }
+            /* 下载按钮样式 */
+            .download-btn {
+                @apply bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-all flex items-center;
+            }
+            /* 卡片操作按钮 */
+            .card-action-btn {
+                @apply p-1.5 rounded-full transition-colors text-gray-600 hover:text-white;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-dark min-h-screen flex flex-col">
+    <!-- 导航栏 -->
+    <header class="bg-white shadow-md sticky top-0 z-50 transition-all duration-300">
+        <div class="container mx-auto px-4 py-4 flex justify-between items-center">
+            <div class="flex items-center space-x-2">
+                <i class="fa fa-plane text-primary text-2xl"></i>
+                <h1 class="text-xl md:text-2xl font-bold text-primary">旅行预算规划助手</h1>
+            </div>
+            <button id="themeToggle" class="p-2 rounded-full hover:bg-gray-100 transition-colors">
+                <i class="fa fa-moon-o text-gray-600"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- 主内容区 -->
+    <main class="flex-grow container mx-auto px-4 py-8">
+        <!-- 计划列表视图 -->
+        <section id="plansView" class="animate-fade-in">
+            <div class="flex justify-between items-center mb-8">
+                <h2 class="text-2xl md:text-3xl font-bold">我的旅行预算计划</h2>
+                <button id="addPlanBtn" class="bg-primary hover:bg-primary/90 text-white px-4 py-2 rounded-lg shadow-md transition-all flex items-center">
+                    <i class="fa fa-plus mr-2"></i> 新建计划
+                </button>
+            </div>
+
+            <!-- 计划列表 -->
+            <div id="plansContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- 计划卡片会通过JavaScript动态生成 -->
+            </div>
+
+            <!-- 空状态提示 -->
+            <div id="emptyState" class="text-center py-16 hidden">
+                <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 text-primary mb-4">
+                    <i class="fa fa-map-o text-2xl"></i>
+                </div>
+                <h3 class="text-xl font-semibold mb-2">还没有旅行计划</h3>
+                <p class="text-gray-500 mb-6">点击"新建计划"开始规划你的下一次旅行</p>
+                <button id="emptyStateAddBtn" class="bg-primary hover:bg-primary/90 text-white px-6 py-3 rounded-lg shadow-md transition-all">新建第一个计划</button>
+            </div>
+        </section>
+
+        <!-- 计划详情视图 -->
+        <section id="planDetailView" class="animate-fade-in hidden">
+            <div class="mb-6">
+                <button id="backToPlansBtn" class="flex items-center text-primary hover:text-primary/80 transition-colors mb-4">
+                    <i class="fa fa-arrow-left mr-2"></i> 返回计划列表
+                </button>
+                
+                <div class="bg-white p-6 rounded-xl shadow-md mb-6">
+                    <div class="flex flex-col md:flex-row md:items-center justify-between mb-6">
+                        <div>
+                            <h2 id="detailTitle" class="text-2xl md:text-3xl font-bold mb-2"></h2>
+                            <p id="detailDuration" class="text-gray-600"></p>
+                        </div>
+                        <div class="flex space-x-3 mt-4 md:mt-0">
+                            <button id="editPlanBtn" class="bg-gray-100 hover:bg-gray-200 text-gray-800 px-4 py-2 rounded-lg transition-all flex items-center">
+                                <i class="fa fa-pencil mr-2"></i> 编辑计划
+                            </button>
+                            <button id="deletePlanBtn" class="bg-red-100 hover:bg-red-200 text-red-800 px-4 py-2 rounded-lg transition-all flex items-center">
+                                <i class="fa fa-trash mr-2"></i> 删除计划
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- 旅行期望输入区域 -->
+                    <div class="mb-6">
+                        <label for="travelExpectation" class="block text-sm font-medium text-gray-700 mb-2">旅行期望</label>
+                        <textarea id="travelExpectation" rows="3" class="w-full px-4 py-3 border border-gray-300 rounded-lg input-focus" 
+                            placeholder="请描述你对这次旅行的期望和诉求，例如：想体验当地美食、希望行程轻松、喜欢历史文化景点等..."></textarea>
+                        
+                        <div class="mt-4 flex justify-end">
+                            <button id="generateAIPlanBtn" class="bg-accent hover:bg-accent/90 text-white px-6 py-3 rounded-lg shadow-md transition-all flex items-center">
+                                <i class="fa fa-magic mr-2"></i>
+                                <span>生成AI旅行计划</span>
+                                <div id="aiLoader" class="ml-2 w-5 h-5 border-2 border-white border-t-transparent rounded-full loader hidden"></div>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 预算表格区域 -->
+            <div class="bg-white rounded-xl shadow-md p-6 mb-8 overflow-x-auto">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-xl font-semibold">每日预算明细</h3>
+                    <!-- 替换添加日期按钮为下载按钮 -->
+                    <button id="downloadExcelBtn" class="download-btn">
+                        <i class="fa fa-download mr-2"></i> 下载Excel
+                    </button>
+                </div>
+
+                <table id="budgetTable" class="excel-table min-w-full">
+                    <thead>
+                        <tr>
+                            <th class="excel-cell text-left text-xs font-medium text-gray-500 uppercase tracking-wider" rowspan="2" style="width: 120px;">日期</th>
+                            
+                            <!-- 行 -->
+                            <th class="excel-cell category-header text-center text-xs font-medium text-gray-500 uppercase tracking-wider" colspan="2">行</th>
+                            
+                            <!-- 住 -->
+                            <th class="excel-cell category-header text-center text-xs font-medium text-gray-500 uppercase tracking-wider" colspan="2">住</th>
+                            
+                            <!-- 食 -->
+                            <th class="excel-cell category-header text-center text-xs font-medium text-gray-500 uppercase tracking-wider" colspan="2">食</th>
+                            
+                            <!-- 玩 -->
+                            <th class="excel-cell category-header text-center text-xs font-medium text-gray-500 uppercase tracking-wider" colspan="2">玩</th>
+                            
+                            <th class="excel-cell text-left text-xs font-medium text-gray-500 uppercase tracking-wider" rowspan="2" style="width: 100px;">当日总额</th>
+                        </tr>
+                        <tr>
+                            <!-- 行的项目和金额 -->
+                            <th class="excel-cell text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style="width: 200px;">项目</th>
+                            <th class="excel-cell text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style="width: 100px;">金额</th>
+                            
+                            <!-- 住的项目和金额 -->
+                            <th class="excel-cell text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style="width: 200px;">项目</th>
+                            <th class="excel-cell text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style="width: 100px;">金额</th>
+                            
+                            <!-- 食的项目和金额 -->
+                            <th class="excel-cell text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style="width: 200px;">项目</th>
+                            <th class="excel-cell text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style="width: 100px;">金额</th>
+                            
+                            <!-- 玩的项目和金额 -->
+                            <th class="excel-cell text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style="width: 200px;">项目</th>
+                            <th class="excel-cell text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style="width: 100px;">金额</th>
+                        </tr>
+                    </thead>
+                    <tbody id="budgetTableBody" class="bg-white">
+                        <!-- 表格内容会通过JavaScript动态生成 -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- 统计和图表区域 -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- 总预算卡片 -->
+                <div class="bg-white rounded-xl shadow-md p-6 col-span-1">
+                    <h3 class="text-lg font-semibold mb-4 text-gray-700">预算总计</h3>
+                    <div class="flex items-end">
+                        <span id="totalBudget" class="text-3xl font-bold text-primary">¥0</span>
+                        <span class="text-gray-500 ml-2 mb-1">元</span>
+                    </div>
+                    
+                    <div class="mt-6 space-y-4">
+                        <div>
+                            <div class="flex justify-between mb-1">
+                                <span class="text-sm text-gray-600">行</span>
+                                <span id="transportTotal" class="text-sm font-medium">¥0</span>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-2">
+                                <div id="transportBar" class="bg-blue-500 h-2 rounded-full" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <div class="flex justify-between mb-1">
+                                <span class="text-sm text-gray-600">住</span>
+                                <span id="accommodationTotal" class="text-sm font-medium">¥0</span>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-2">
+                                <div id="accommodationBar" class="bg-green-500 h-2 rounded-full" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <div class="flex justify-between mb-1">
+                                <span class="text-sm text-gray-600">食</span>
+                                <span id="foodTotal" class="text-sm font-medium">¥0</span>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-2">
+                                <div id="foodBar" class="bg-yellow-500 h-2 rounded-full" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <div class="flex justify-between mb-1">
+                                <span class="text-sm text-gray-600">玩</span>
+                                <span id="activitiesTotal" class="text-sm font-medium">¥0</span>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-2">
+                                <div id="activitiesBar" class="bg-purple-500 h-2 rounded-full" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 图表区域 -->
+                <div class="bg-white rounded-xl shadow-md p-6 col-span-1 lg:col-span-2">
+                    <h3 class="text-lg font-semibold mb-4 text-gray-700">预算分布</h3>
+                    <div class="h-64">
+                        <canvas id="budgetChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- 页脚 -->
+    <footer class="bg-white border-t border-gray-200 py-6">
+        <div class="container mx-auto px-4 text-center text-gray-600">
+            <p>旅行预算规划助手 © 2023</p>
+            <p class="text-sm mt-1">让每一次旅行都精打细算</p>
+        </div>
+    </footer>
+
+    <!-- 新建/编辑计划模态框 -->
+    <div id="planModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6 animate-fade-in">
+            <h3 id="modalTitle" class="text-xl font-bold mb-4">新建旅行计划</h3>
+            
+            <form id="planForm">
+                <input type="hidden" id="planId">
+                <input type="hidden" id="startDate">
+                <input type="hidden" id="endDate">
+                
+                <div class="mb-4">
+                    <label for="destination" class="block text-sm font-medium text-gray-700 mb-1">目的地</label>
+                    <input type="text" id="destination" required="" class="w-full px-4 py-2 border border-gray-300 rounded-lg input-focus">
+                </div>
+                
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">旅行日期</label>
+                    <!-- 日历选择器容器 -->
+                    <input type="text" id="dateRangePicker" placeholder="选择旅行起止日期" class="w-full">
+                    <p id="tripDuration" class="mt-2 text-sm text-gray-500">请选择旅行的起止日期</p>
+                </div>
+                
+                <div class="flex justify-end space-x-3">
+                    <button type="button" id="cancelModalBtn" class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 transition-colors">
+                        取消
+                    </button>
+                    <button type="submit" class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors">
+                        保存
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 确认删除模态框 -->
+    <div id="confirmDeleteModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6 animate-fade-in">
+            <div class="text-center mb-6">
+                <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-red-100 text-red-500 mb-4">
+                    <i class="fa fa-exclamation-triangle text-2xl"></i>
+                </div>
+                <h3 class="text-xl font-bold mb-2">确认删除</h3>
+                <p class="text-gray-600">你确定要删除这个旅行计划吗？此操作无法撤销。</p>
+            </div>
+            
+            <div class="flex justify-center space-x-3">
+                <button id="cancelDeleteBtn" class="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 transition-colors">
+                    取消
+                </button>
+                <button id="confirmDeleteBtn" class="px-6 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors">
+                    确认删除
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 数据存储
+        let travelPlans = JSON.parse(localStorage.getItem('travelPlans')) || [];
+        let currentPlanId = null;
+        let budgetChart = null;
+        let dateRangePicker = null;
+        // 用于确认删除的计划ID
+        let planToDeleteId = null;
+
+        // DOM 元素
+        const plansView = document.getElementById('plansView');
+        const planDetailView = document.getElementById('planDetailView');
+        const plansContainer = document.getElementById('plansContainer');
+        const emptyState = document.getElementById('emptyState');
+        const budgetTableBody = document.getElementById('budgetTableBody');
+        const planModal = document.getElementById('planModal');
+        const confirmDeleteModal = document.getElementById('confirmDeleteModal');
+        const tripDurationEl = document.getElementById('tripDuration');
+        const travelExpectationEl = document.getElementById('travelExpectation');
+        const generateAIPlanBtn = document.getElementById('generateAIPlanBtn');
+        const aiLoader = document.getElementById('aiLoader');
+        const downloadExcelBtn = document.getElementById('downloadExcelBtn');
+        
+        // 初始化应用
+        function initApp() {
+            // 先确保DOM加载完成再初始化日历
+            setTimeout(initializeDatePicker, 100);
+            renderPlans();
+            setupEventListeners();
+        }
+
+        // 初始化日期选择器
+        function initializeDatePicker() {
+            // 先销毁可能存在的实例
+            if (dateRangePicker) {
+                dateRangePicker.destroy();
+            }
+            
+            // 获取DOM元素
+            const dateInput = document.getElementById('dateRangePicker');
+            
+            // 确保元素存在
+            if (!dateInput) {
+                console.error('日期选择器元素未找到');
+                return;
+            }
+            
+            // 初始化日历选择器
+            dateRangePicker = flatpickr(dateInput, {
+                mode: "range",
+                dateFormat: "Y-m-d",
+                locale: "zh",
+                minDate: "today",
+                placeholder: "选择旅行起止日期",
+                onReady: function() {
+                    console.log('日历选择器已准备好');
+                },
+                onClose: function(selectedDates) {
+                    if (selectedDates.length === 2) {
+                        const startDate = selectedDates[0];
+                        const endDate = selectedDates[1];
+                        const days = calculateDaysBetween(startDate, endDate);
+                        
+                        // 更新隐藏字段
+                        document.getElementById('startDate').value = formatDate(startDate);
+                        document.getElementById('endDate').value = formatDate(endDate);
+                        
+                        // 显示旅行天数
+                        tripDurationEl.textContent = `旅行共 ${days} 天 (${formatDisplayDate(startDate)} 至 ${formatDisplayDate(endDate)})`;
+                        tripDurationEl.classList.add('text-primary');
+                    } else {
+                        document.getElementById('startDate').value = '';
+                        document.getElementById('endDate').value = '';
+                        tripDurationEl.textContent = '请选择旅行的起止日期';
+                        tripDurationEl.classList.remove('text-primary');
+                    }
+                }
+            });
+        }
+
+        // 渲染计划列表
+        function renderPlans() {
+            plansContainer.innerHTML = '';
+            
+            if (travelPlans.length === 0) {
+                emptyState.classList.remove('hidden');
+                return;
+            }
+            
+            emptyState.classList.add('hidden');
+            
+            travelPlans.forEach(plan => {
+                const planCard = document.createElement('div');
+                planCard.className = 'bg-white rounded-xl shadow-md overflow-hidden hover-lift';
+                planCard.innerHTML = `
+                    <div class="h-40 bg-gradient-to-r from-primary/80 to-primary relative overflow-hidden">
+                        <i class="fa fa-map-marker absolute top-4 left-4 text-white text-2xl"></i>
+                        <div class="absolute bottom-4 left-4 right-4 text-white">
+                            <h3 class="text-xl font-bold truncate">${plan.destination}</h3>
+                            <p class="flex items-center"><i class="fa fa-calendar-o mr-1"></i> ${formatDisplayDate(new Date(plan.startDate))} 至 ${formatDisplayDate(new Date(plan.endDate))}</p>
+                        </div>
+                        <!-- 卡片上的操作按钮 -->
+                        <div class="absolute top-3 right-3 flex space-x-1">
+                            <button class="edit-card-btn card-action-btn hover:bg-blue-600" data-id="${plan.id}" title="编辑计划">
+                                <i class="fa fa-pencil"></i>
+                            </button>
+                            <button class="delete-card-btn card-action-btn hover:bg-red-600" data-id="${plan.id}" title="删除计划">
+                                <i class="fa fa-trash"></i>
+                            </button>
+                        </div>
+                        <div class="absolute inset-0 bg-black opacity-20"></div>
+                    </div>
+                    <div class="p-5">
+                        <div class="flex justify-between items-center mb-4">
+                            <div>
+                                <p class="text-sm text-gray-500">总预算</p>
+                                <p class="text-xl font-bold text-primary">¥${calculateTotalBudget(plan)}</p>
+                            </div>
+                            <div>
+                                <p class="text-sm text-gray-500">旅行天数</p>
+                                <p class="text-xl font-bold">${plan.days}</p>
+                            </div>
+                        </div>
+                        <button class="view-plan-btn w-full bg-gray-100 hover:bg-gray-200 text-gray-800 py-2 rounded-lg transition-colors" 
+                            data-id="${plan.id}">
+                            查看详情
+                        </button>
+                    </div>
+                `;
+                plansContainer.appendChild(planCard);
+            });
+            
+            // 添加查看详情事件监听
+            document.querySelectorAll('.view-plan-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const planId = btn.getAttribute('data-id');
+                    viewPlanDetail(planId);
+                });
+            });
+            
+            // 添加卡片上的编辑按钮事件监听
+            document.querySelectorAll('.edit-card-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const planId = btn.getAttribute('data-id');
+                    currentPlanId = planId; // 设置当前计划ID
+                    openEditPlanModal();
+                });
+            });
+            
+            // 添加卡片上的删除按钮事件监听
+            document.querySelectorAll('.delete-card-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    planToDeleteId = btn.getAttribute('data-id');
+                    openDeleteConfirmModal();
+                });
+            });
+        }
+
+        // 查看计划详情
+        function viewPlanDetail(planId) {
+            currentPlanId = planId;
+            const plan = travelPlans.find(p => p.id === planId);
+            
+            if (!plan) return;
+            
+            // 更新详情页标题和信息
+            document.getElementById('detailTitle').textContent = plan.destination;
+            document.getElementById('detailDuration').textContent = 
+                `${formatDisplayDate(new Date(plan.startDate))} 至 ${formatDisplayDate(new Date(plan.endDate))}（${plan.days} 天）`;
+            
+            // 加载旅行期望
+            travelExpectationEl.value = plan.expectation || '';
+            
+            // 确保预算项目与旅行日期匹配，并添加行前准备
+            syncBudgetItemsWithDates(plan);
+            
+            // 渲染预算表格
+            renderBudgetTable(plan);
+            
+            // 更新统计数据
+            updateStatistics(plan);
+            
+            // 切换视图
+            plansView.classList.add('hidden');
+            planDetailView.classList.remove('hidden');
+            
+            // 滚动到顶部
+            window.scrollTo(0, 0);
+        }
+
+        // 同步预算项目与旅行日期，包括行前准备
+        function syncBudgetItemsWithDates(plan) {
+            // 确保行前准备项目存在
+            let hasPreparationItem = false;
+            
+            // 检查是否已有行前准备项目
+            if (plan.budgetItems) {
+                hasPreparationItem = plan.budgetItems.some(item => item.isPreparation);
+            } else {
+                plan.budgetItems = [];
+            }
+            
+            // 如果没有行前准备项目，添加一个
+            if (!hasPreparationItem) {
+                plan.budgetItems.unshift({
+                    date: null,
+                    isPreparation: true,
+                    transport: { name: '', amount: 0 },
+                    accommodation: { name: '', amount: 0 },
+                    food: { name: '', amount: 0 },
+                    activities: { name: '', amount: 0 }
+                });
+            }
+            
+            // 生成所有旅行日期
+            const allDates = generateDateRange(plan.startDate, plan.endDate);
+            
+            // 过滤掉行前准备项目，只处理日期项目
+            const dateItems = plan.budgetItems.filter(item => !item.isPreparation);
+            
+            // 检查现有预算项目，确保每个日期都有对应的项目
+            allDates.forEach(date => {
+                const dateStr = formatDate(date);
+                const exists = dateItems.some(item => item.date === dateStr);
+                
+                if (!exists) {
+                    // 添加新的预算项目
+                    plan.budgetItems.push({
+                        date: dateStr,
+                        isPreparation: false,
+                        transport: { name: '', amount: 0 },
+                        accommodation: { name: '', amount: 0 },
+                        food: { name: '', amount: 0 },
+                        activities: { name: '', amount: 0 }
+                    });
+                }
+            });
+            
+            // 移除不在日期范围内的项目（保留行前准备）
+            plan.budgetItems = plan.budgetItems.filter(item => 
+                item.isPreparation || 
+                (item.date && allDates.some(date => formatDate(date) === item.date))
+            );
+            
+            // 按日期排序（行前准备始终在最前面）
+            plan.budgetItems.sort((a, b) => {
+                // 行前准备排在最前面
+                if (a.isPreparation) return -1;
+                if (b.isPreparation) return 1;
+                
+                // 其他按日期排序
+                return new Date(a.date) - new Date(b.date);
+            });
+            
+            // 保存更改
+            saveTravelPlans();
+        }
+
+        // 渲染预算表格
+        function renderBudgetTable(plan) {
+            budgetTableBody.innerHTML = '';
+            
+            if (plan.budgetItems.length === 0) {
+                // 如果没有数据，添加一行提示
+                const emptyRow = document.createElement('tr');
+                emptyRow.innerHTML = `
+                    <td colspan="10" class="excel-cell px-4 py-8 text-center text-gray-500">
+                        没有预算项目，请检查旅行日期设置
+                    </td>
+                `;
+                budgetTableBody.appendChild(emptyRow);
+                return;
+            }
+            
+            // 添加预算项目行
+            plan.budgetItems.forEach((item, index) => {
+                const row = document.createElement('tr');
+                // 为行前准备行添加特殊样式
+                row.className = item.isPreparation ? 'preparation-row hover:bg-blue-50 transition-colors' : 'hover:bg-gray-50 transition-colors';
+                
+                row.innerHTML = `
+                    <td class="excel-cell font-medium ${item.isPreparation ? 'text-blue-700' : ''}">
+                        ${item.isPreparation ? '行前准备' : 
+                          `<input type="date" value="${item.date}" class="date-input w-full px-2 py-1 border border-transparent rounded input-focus bg-transparent" 
+                            data-index="${index}" readonly>`}
+                    </td>
+                    
+                    <!-- 行 -->
+                    <td class="excel-cell">
+                        <textarea class="transport-name w-full px-2 py-1 border border-transparent rounded input-focus bg-transparent item-input" 
+                            data-index="${index}" placeholder="例如：飞机票、出租车等">${item.transport.name}</textarea>
+                    </td>
+                    <td class="excel-cell">
+                        <div class="relative">
+                            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">¥</span>
+                            <input type="number" min="0" step="0.01" value="${item.transport.amount}" 
+                                class="transport-amount w-full pl-8 pr-2 py-1 border border-transparent rounded input-focus bg-transparent amount-input" 
+                                data-index="${index}">
+                        </div>
+                    </td>
+                    
+                    <!-- 住 -->
+                    <td class="excel-cell">
+                        <textarea class="accommodation-name w-full px-2 py-1 border border-transparent rounded input-focus bg-transparent item-input" 
+                            data-index="${index}" placeholder="例如：酒店、民宿等">${item.accommodation.name}</textarea>
+                    </td>
+                    <td class="excel-cell">
+                        <div class="relative">
+                            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">¥</span>
+                            <input type="number" min="0" step="0.01" value="${item.accommodation.amount}" 
+                                class="accommodation-amount w-full pl-8 pr-2 py-1 border border-transparent rounded input-focus bg-transparent amount-input" 
+                                data-index="${index}">
+                        </div>
+                    </td>
+                    
+                    <!-- 食 -->
+                    <td class="excel-cell">
+                        <textarea class="food-name w-full px-2 py-1 border border-transparent rounded input-focus bg-transparent item-input" 
+                            data-index="${index}" placeholder="例如：早餐、晚餐、小吃等">${item.food.name}</textarea>
+                    </td>
+                    <td class="excel-cell">
+                        <div class="relative">
+                            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">¥</span>
+                            <input type="number" min="0" step="0.01" value="${item.food.amount}" 
+                                class="food-amount w-full pl-8 pr-2 py-1 border border-transparent rounded input-focus bg-transparent amount-input" 
+                                data-index="${index}">
+                        </div>
+                    </td>
+                    
+                    <!-- 玩 -->
+                    <td class="excel-cell">
+                        <textarea class="activities-name w-full px-2 py-1 border border-transparent rounded input-focus bg-transparent item-input" 
+                            data-index="${index}" placeholder="例如：门票、娱乐项目等">${item.activities.name}</textarea>
+                    </td>
+                    <td class="excel-cell">
+                        <div class="relative">
+                            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">¥</span>
+                            <input type="number" min="0" step="0.01" value="${item.activities.amount}" 
+                                class="activities-amount w-full pl-8 pr-2 py-1 border border-transparent rounded input-focus bg-transparent amount-input" 
+                                data-index="${index}">
+                        </div>
+                    </td>
+                    
+                    <!-- 当日总额 -->
+                    <td class="excel-cell font-medium">
+                        ¥${calculateDailyTotal(item)}
+                    </td>
+                `;
+                budgetTableBody.appendChild(row);
+            });
+            
+            // 添加输入事件监听
+            addTableInputListeners();
+        }
+
+        // 为表格输入框添加事件监听
+        function addTableInputListeners() {
+            // 交通项目
+            document.querySelectorAll('.transport-name').forEach(input => {
+                input.addEventListener('input', (e) => {
+                    const index = parseInt(e.target.getAttribute('data-index'));
+                    updateBudgetItemField(index, 'transport', 'name', e.target.value);
+                });
+            });
+            
+            // 交通金额
+            document.querySelectorAll('.transport-amount').forEach(input => {
+                input.addEventListener('change', (e) => {
+                    const index = parseInt(e.target.getAttribute('data-index'));
+                    updateBudgetItemField(index, 'transport', 'amount', parseFloat(e.target.value) || 0);
+                    renderBudgetTable(getCurrentPlan());
+                    updateStatistics(getCurrentPlan());
+                });
+            });
+            
+            // 住宿项目
+            document.querySelectorAll('.accommodation-name').forEach(input => {
+                input.addEventListener('input', (e) => {
+                    const index = parseInt(e.target.getAttribute('data-index'));
+                    updateBudgetItemField(index, 'accommodation', 'name', e.target.value);
+                });
+            });
+            
+            // 住宿金额
+            document.querySelectorAll('.accommodation-amount').forEach(input => {
+                input.addEventListener('change', (e) => {
+                    const index = parseInt(e.target.getAttribute('data-index'));
+                    updateBudgetItemField(index, 'accommodation', 'amount', parseFloat(e.target.value) || 0);
+                    renderBudgetTable(getCurrentPlan());
+                    updateStatistics(getCurrentPlan());
+                });
+            });
+            
+            // 餐饮项目
+            document.querySelectorAll('.food-name').forEach(input => {
+                input.addEventListener('input', (e) => {
+                    const index = parseInt(e.target.getAttribute('data-index'));
+                    updateBudgetItemField(index, 'food', 'name', e.target.value);
+                });
+            });
+            
+            // 餐饮金额
+            document.querySelectorAll('.food-amount').forEach(input => {
+                input.addEventListener('change', (e) => {
+                    const index = parseInt(e.target.getAttribute('data-index'));
+                    updateBudgetItemField(index, 'food', 'amount', parseFloat(e.target.value) || 0);
+                    renderBudgetTable(getCurrentPlan());
+                    updateStatistics(getCurrentPlan());
+                });
+            });
+            
+            // 活动项目
+            document.querySelectorAll('.activities-name').forEach(input => {
+                input.addEventListener('input', (e) => {
+                    const index = parseInt(e.target.getAttribute('data-index'));
+                    updateBudgetItemField(index, 'activities', 'name', e.target.value);
+                });
+            });
+            
+            // 活动金额
+            document.querySelectorAll('.activities-amount').forEach(input => {
+                input.addEventListener('change', (e) => {
+                    const index = parseInt(e.target.getAttribute('data-index'));
+                    updateBudgetItemField(index, 'activities', 'amount', parseFloat(e.target.value) || 0);
+                    renderBudgetTable(getCurrentPlan());
+                    updateStatistics(getCurrentPlan());
+                });
+            });
+        }
+
+        // 更新预算项目字段
+        function updateBudgetItemField(index, field, subField, value) {
+            const plan = getCurrentPlan();
+            if (!plan) return;
+            
+            if (subField) {
+                plan.budgetItems[index][field][subField] = value;
+            } else {
+                plan.budgetItems[index][field] = value;
+            }
+            
+            saveTravelPlans();
+        }
+
+        // 更新统计数据
+        function updateStatistics(plan) {
+            const totals = calculateCategoryTotals(plan);
+            
+            // 更新总计
+            document.getElementById('totalBudget').textContent = `¥${totals.total}`;
+            
+            // 更新分类总计
+            document.getElementById('transportTotal').textContent = `¥${totals.transport}`;
+            document.getElementById('accommodationTotal').textContent = `¥${totals.accommodation}`;
+            document.getElementById('foodTotal').textContent = `¥${totals.food}`;
+            document.getElementById('activitiesTotal').textContent = `¥${totals.activities}`;
+            
+            // 更新进度条
+            if (totals.total > 0) {
+                document.getElementById('transportBar').style.width = `${(totals.transport / totals.total) * 100}%`;
+                document.getElementById('accommodationBar').style.width = `${(totals.accommodation / totals.total) * 100}%`;
+                document.getElementById('foodBar').style.width = `${(totals.food / totals.total) * 100}%`;
+                document.getElementById('activitiesBar').style.width = `${(totals.activities / totals.total) * 100}%`;
+            } else {
+                document.getElementById('transportBar').style.width = '0%';
+                document.getElementById('accommodationBar').style.width = '0%';
+                document.getElementById('foodBar').style.width = '0%';
+                document.getElementById('activitiesBar').style.width = '0%';
+            }
+            
+            // 更新图表
+            updateChart(totals);
+        }
+
+        // 更新图表
+        function updateChart(totals) {
+            const ctx = document.getElementById('budgetChart').getContext('2d');
+            
+            // 如果图表已存在，销毁它
+            if (budgetChart) {
+                budgetChart.destroy();
+            }
+            
+            // 创建新图表
+            budgetChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['行', '住', '食', '玩'],
+                    datasets: [{
+                        data: [parseFloat(totals.transport), parseFloat(totals.accommodation), 
+                               parseFloat(totals.food), parseFloat(totals.activities)],
+                        backgroundColor: [
+                            '#3B82F6', // 蓝色 - 行
+                            '#10B981', // 绿色 - 住
+                            '#F59E0B', // 黄色 - 食
+                            '#8B5CF6'  // 紫色 - 玩
+                        ],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.raw || 0;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
+                                    return `${label}: ¥${value.toFixed(2)} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    },
+                    cutout: '65%'
+                }
+            });
+        }
+
+        // 打开新建计划模态框
+        function openNewPlanModal() {
+            document.getElementById('modalTitle').textContent = '新建旅行计划';
+            document.getElementById('planForm').reset();
+            document.getElementById('planId').value = '';
+            document.getElementById('startDate').value = '';
+            document.getElementById('endDate').value = '';
+            tripDurationEl.textContent = '请选择旅行的起止日期';
+            tripDurationEl.classList.remove('text-primary');
+            
+            // 重置并重新初始化日期选择器
+            setTimeout(() => {
+                initializeDatePicker();
+            }, 100);
+            
+            planModal.classList.remove('hidden');
+        }
+
+        // 打开编辑计划模态框
+        function openEditPlanModal() {
+            const plan = getCurrentPlan();
+            if (!plan) return;
+            
+            document.getElementById('modalTitle').textContent = '编辑旅行计划';
+            document.getElementById('planId').value = plan.id;
+            document.getElementById('destination').value = plan.destination;
+            document.getElementById('startDate').value = plan.startDate;
+            document.getElementById('endDate').value = plan.endDate;
+            
+            // 重新初始化日期选择器并设置值
+            setTimeout(() => {
+                initializeDatePicker();
+                dateRangePicker.setDate([new Date(plan.startDate), new Date(plan.endDate)]);
+            }, 100);
+            
+            // 更新旅行天数显示
+            const days = calculateDaysBetween(new Date(plan.startDate), new Date(plan.endDate));
+            tripDurationEl.textContent = `旅行共 ${days} 天 (${formatDisplayDate(new Date(plan.startDate))} 至 ${formatDisplayDate(new Date(plan.endDate))})`;
+            tripDurationEl.classList.add('text-primary');
+            
+            planModal.classList.remove('hidden');
+        }
+
+        // 保存计划
+        function savePlan(event) {
+            event.preventDefault();
+            
+            const planId = document.getElementById('planId').value;
+            const destination = document.getElementById('destination').value;
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            
+            // 验证日期是否选择
+            if (!startDate || !endDate) {
+                alert('请选择旅行的起止日期');
+                return;
+            }
+            
+            const days = calculateDaysBetween(new Date(startDate), new Date(endDate));
+            
+            if (planId) {
+                // 更新现有计划
+                const planIndex = travelPlans.findIndex(p => p.id === planId);
+                if (planIndex !== -1) {
+                    const oldPlan = travelPlans[planIndex];
+                    travelPlans[planIndex].destination = destination;
+                    travelPlans[planIndex].startDate = startDate;
+                    travelPlans[planIndex].endDate = endDate;
+                    travelPlans[planIndex].days = days;
+                    
+                    // 如果日期范围改变，同步预算项目
+                    if (oldPlan.startDate !== startDate || oldPlan.endDate !== endDate) {
+                        syncBudgetItemsWithDates(travelPlans[planIndex]);
+                    }
+                }
+            } else {
+                // 创建新计划
+                const newPlan = {
+                    id: generateId(),
+                    destination,
+                    startDate,
+                    endDate,
+                    days,
+                    budgetItems: [],
+                    expectation: '' // 旅行期望字段
+                };
+                
+                // 生成预算项目（包括行前准备）
+                syncBudgetItemsWithDates(newPlan);
+                
+                travelPlans.push(newPlan);
+            }
+            
+            saveTravelPlans();
+            planModal.classList.add('hidden');
+            
+            // 如果是在详情页编辑的，刷新详情
+            if (currentPlanId) {
+                viewPlanDetail(currentPlanId);
+            } else {
+                renderPlans();
+            }
+        }
+
+        // 打开删除确认模态框
+        function openDeleteConfirmModal() {
+            confirmDeleteModal.classList.remove('hidden');
+        }
+
+        // 确认删除计划
+        function confirmDeletePlan() {
+            // 使用专门的计划ID变量，支持从卡片直接删除
+            const deleteId = planToDeleteId || currentPlanId;
+            if (!deleteId) return;
+            
+            travelPlans = travelPlans.filter(plan => plan.id !== deleteId);
+            saveTravelPlans();
+            confirmDeleteModal.classList.add('hidden');
+            
+            // 如果当前在详情页且删除的是当前计划，返回列表
+            if (planDetailView.classList.contains('hidden') === false && currentPlanId === deleteId) {
+                planDetailView.classList.add('hidden');
+                plansView.classList.remove('hidden');
+                currentPlanId = null;
+            }
+            
+            renderPlans();
+            // 重置删除ID
+            planToDeleteId = null;
+        }
+
+        // 生成AI旅行计划
+        function generateAIPlan() {
+            const plan = getCurrentPlan();
+            if (!plan) return;
+            
+            // 获取用户输入的旅行期望
+            const expectation = travelExpectationEl.value.trim();
+            
+            // 保存旅行期望
+            plan.expectation = expectation;
+            saveTravelPlans();
+            
+            // 显示加载状态
+            generateAIPlanBtn.disabled = true;
+            aiLoader.classList.remove('hidden');
+            
+            // 模拟AI处理延迟
+            setTimeout(() => {
+                // 根据目的地、天数和期望生成计划
+                const aiSuggestions = generateSuggestionsBasedOnPlan(plan, expectation);
+                
+                // 更新预算项目（跳过行前准备）
+                plan.budgetItems.forEach((item, index) => {
+                    // 行前准备不生成建议
+                    if (item.isPreparation) return;
+                    
+                    // 计算实际天数索引（减去行前准备）
+                    const dayIndex = index - 1;
+                    const daySuggestions = aiSuggestions[dayIndex % aiSuggestions.length];
+                    
+                    item.transport.name = daySuggestions.transport;
+                    item.accommodation.name = daySuggestions.accommodation;
+                    item.food.name = daySuggestions.food;
+                    item.activities.name = daySuggestions.activities;
+                    
+                    // 金额保持不变
+                });
+                
+                saveTravelPlans();
+                renderBudgetTable(plan);
+                
+                // 隐藏加载状态
+                generateAIPlanBtn.disabled = false;
+                aiLoader.classList.add('hidden');
+                
+                // 显示成功提示
+                alert('AI旅行计划生成成功！已为你填充每日行程建议。');
+            }, 2000);
+        }
+
+        // 下载Excel文件
+        function downloadExcel() {
+            const plan = getCurrentPlan();
+            if (!plan) return;
+            
+            // 准备Excel数据
+            const excelData = [
+                // 标题行
+                [`${plan.destination}旅行预算 (${formatDisplayDate(new Date(plan.startDate))} 至 ${formatDisplayDate(new Date(plan.endDate))})`],
+                [], // 空行
+                // 表头
+                ["日期", "行-项目", "行-金额", "住-项目", "住-金额", "食-项目", "食-金额", "玩-项目", "玩-金额", "当日总额"]
+            ];
+            
+            // 添加数据行
+            plan.budgetItems.forEach(item => {
+                excelData.push([
+                    item.isPreparation ? "行前准备" : formatDisplayDate(new Date(item.date)),
+                    item.transport.name,
+                    item.transport.amount,
+                    item.accommodation.name,
+                    item.accommodation.amount,
+                    item.food.name,
+                    item.food.amount,
+                    item.activities.name,
+                    item.activities.amount,
+                    parseFloat(calculateDailyTotal(item))
+                ]);
+            });
+            
+            // 添加空行和总计行
+            excelData.push([]);
+            const totals = calculateCategoryTotals(plan);
+            excelData.push([
+                "总计", "", totals.transport, "", totals.accommodation, 
+                "", totals.food, "", totals.activities, totals.total
+            ]);
+            
+            // 创建工作簿和工作表
+            const ws = XLSX.utils.aoa_to_sheet(excelData);
+            
+            // 调整列宽
+            const wscols = [
+                {wch: 12},  // 日期
+                {wch: 20},  // 行-项目
+                {wch: 10},  // 行-金额
+                {wch: 20},  // 住-项目
+                {wch: 10},  // 住-金额
+                {wch: 20},  // 食-项目
+                {wch: 10},  // 食-金额
+                {wch: 20},  // 玩-项目
+                {wch: 10},  // 玩-金额
+                {wch: 12}   // 当日总额
+            ];
+            ws['!cols'] = wscols;
+            
+            // 合并标题单元格
+            ws['!merges'] = [
+                {s: {r:0, c:0}, e: {r:0, c:9}} // 合并第一行的所有列
+            ];
+            
+            // 创建工作簿并添加工作表
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "旅行预算");
+            
+            // 生成文件名
+            const fileName = `${plan.destination}_旅行预算_${formatDate(new Date())}.xlsx`;
+            
+            // 下载文件
+            XLSX.writeFile(wb, fileName);
+        }
+
+        // 根据计划和期望生成建议（模拟AI逻辑）
+        function generateSuggestionsBasedOnPlan(plan, expectation) {
+            const destination = plan.destination;
+            // 减去行前准备，得到实际旅行天数
+            const days = plan.days;
+            
+            // 根据不同目的地生成不同建议
+            let baseSuggestions = [];
+            
+            // 北京行程建议
+            if (destination.includes('北京') || destination.includes('北平')) {
+                baseSuggestions = [
+                    {
+                        transport: '地铁1号线游览，公交出行',
+                        accommodation: '市中心酒店，靠近地铁站',
+                        food: '北京烤鸭，炸酱面',
+                        activities: '天安门广场，故宫博物院'
+                    },
+                    {
+                        transport: '地铁4号线，出租车',
+                        accommodation: '市中心酒店',
+                        food: '涮羊肉，豆汁儿',
+                        activities: '颐和园，圆明园遗址公园'
+                    },
+                    {
+                        transport: '旅游专线巴士',
+                        accommodation: '市中心酒店',
+                        food: '护国寺小吃，老北京炸酱面',
+                        activities: '长城一日游，奥林匹克公园'
+                    }
+                ];
+            } 
+            // 上海行程建议
+            else if (destination.includes('上海')) {
+                baseSuggestions = [
+                    {
+                        transport: '地铁2号线，外滩观光车',
+                        accommodation: '外滩附近酒店',
+                        food: '小笼包，生煎包',
+                        activities: '外滩，南京路步行街'
+                    },
+                    {
+                        transport: '地铁16号线，磁悬浮',
+                        accommodation: '浦东新区酒店',
+                        food: '本帮菜，南翔小笼',
+                        activities: '上海迪士尼乐园'
+                    },
+                    {
+                        transport: '黄浦江轮渡，地铁',
+                        accommodation: '徐汇区酒店',
+                        food: '上海老酸奶，城隍庙小吃',
+                        activities: '豫园，上海科技馆'
+                    }
+                ];
+            }
+            // 广州行程建议
+            else if (destination.includes('广州')) {
+                baseSuggestions = [
+                    {
+                        transport: '地铁1号线，公交',
+                        accommodation: '北京路附近酒店',
+                        food: '早茶，烧腊',
+                        activities: '北京路步行街，陈家祠'
+                    },
+                    {
+                        transport: '地铁3号线，APM线',
+                        accommodation: '天河区酒店',
+                        food: '广州酒家早茶，双皮奶',
+                        activities: '广州塔，海心沙'
+                    },
+                    {
+                        transport: '地铁5号线，出租车',
+                        accommodation: '荔湾区酒店',
+                        food: '艇仔粥，肠粉',
+                        activities: '上下九步行街，沙面岛'
+                    }
+                ];
+            }
+            // 默认通用行程建议
+            else {
+                baseSuggestions = [
+                    {
+                        transport: '当地公交，地铁',
+                        accommodation: '市中心酒店',
+                        food: '当地特色餐厅',
+                        activities: '城市地标，历史景点'
+                    },
+                    {
+                        transport: '旅游巴士，出租车',
+                        accommodation: '市中心酒店',
+                        food: '特色小吃街',
+                        activities: '文化博物馆，自然风光'
+                    },
+                    {
+                        transport: '共享单车，步行',
+                        accommodation: '市中心酒店',
+                        food: '夜市美食，本地菜肴',
+                        activities: '购物区，休闲公园'
+                    }
+                ];
+            }
+            
+            // 根据用户期望调整建议
+            if (expectation.includes('美食') || expectation.includes('吃')) {
+                baseSuggestions.forEach(day => {
+                    day.food += '，当地美食探索，网红餐厅打卡';
+                });
+            }
+            
+            if (expectation.includes('历史') || expectation.includes('文化')) {
+                baseSuggestions.forEach(day => {
+                    day.activities += '，博物馆，历史古迹';
+                });
+            }
+            
+            if (expectation.includes('自然') || expectation.includes('风景')) {
+                baseSuggestions.forEach(day => {
+                    day.activities += '，自然公园，观景台';
+                });
+            }
+            
+            if (expectation.includes('轻松') || expectation.includes('休闲')) {
+                baseSuggestions.forEach(day => {
+                    day.transport += '，避免拥挤时段出行';
+                    day.activities += '，咖啡馆休息，慢节奏游览';
+                });
+            }
+            
+            // 根据旅行天数扩展建议
+            const suggestions = [];
+            for (let i = 0; i < days; i++) {
+                suggestions.push({...baseSuggestions[i % baseSuggestions.length]});
+            }
+            
+            return suggestions;
+        }
+
+        // 工具函数 - 获取当前计划
+        function getCurrentPlan() {
+            return travelPlans.find(plan => plan.id === currentPlanId);
+        }
+
+        // 工具函数 - 计算每日总额
+        function calculateDailyTotal(item) {
+            return (item.transport.amount + item.accommodation.amount + 
+                    item.food.amount + item.activities.amount).toFixed(2);
+        }
+
+        // 工具函数 - 计算分类总额
+        function calculateCategoryTotals(plan) {
+            let transport = 0;
+            let accommodation = 0;
+            let food = 0;
+            let activities = 0;
+            
+            plan.budgetItems.forEach(item => {
+                transport += item.transport.amount;
+                accommodation += item.accommodation.amount;
+                food += item.food.amount;
+                activities += item.activities.amount;
+            });
+            
+            const total = transport + accommodation + food + activities;
+            
+            return {
+                transport: transport.toFixed(2),
+                accommodation: accommodation.toFixed(2),
+                food: food.toFixed(2),
+                activities: activities.toFixed(2),
+                total: total.toFixed(2)
+            };
+        }
+
+        // 工具函数 - 计算总预算
+        function calculateTotalBudget(plan) {
+            const totals = calculateCategoryTotals(plan);
+            return totals.total;
+        }
+
+        // 工具函数 - 生成唯一ID
+        function generateId() {
+            return Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+        }
+
+        // 工具函数 - 保存计划到本地存储
+        function saveTravelPlans() {
+            localStorage.setItem('travelPlans', JSON.stringify(travelPlans));
+        }
+
+        // 工具函数 - 计算两个日期之间的天数
+        function calculateDaysBetween(startDate, endDate) {
+            const oneDay = 24 * 60 * 60 * 1000; // 毫秒
+            const start = new Date(startDate);
+            const end = new Date(endDate);
+            const diffDays = Math.round(Math.abs((start - end) / oneDay)) + 1; // +1 是因为包含起止日期
+            return diffDays;
+        }
+
+        // 工具函数 - 格式化日期为YYYY-MM-DD
+        function formatDate(date) {
+            const d = new Date(date);
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
+        // 工具函数 - 格式化日期为YYYY年MM月DD日
+        function formatDisplayDate(date) {
+            const d = new Date(date);
+            const year = d.getFullYear();
+            const month = d.getMonth() + 1;
+            const day = d.getDate();
+            return `${year}年${month}月${day}日`;
+        }
+
+        // 工具函数 - 生成日期范围数组
+        function generateDateRange(startDateStr, endDateStr) {
+            const dates = [];
+            const startDate = new Date(startDateStr);
+            const endDate = new Date(endDateStr);
+            
+            let currentDate = new Date(startDate);
+            
+            while (currentDate <= endDate) {
+                dates.push(new Date(currentDate));
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
+            
+            return dates;
+        }
+
+        // 设置事件监听器
+        function setupEventListeners() {
+            // 返回计划列表
+            document.getElementById('backToPlansBtn').addEventListener('click', () => {
+                planDetailView.classList.add('hidden');
+                plansView.classList.remove('hidden');
+                currentPlanId = null;
+            });
+            
+            // 新建计划按钮
+            document.getElementById('addPlanBtn').addEventListener('click', openNewPlanModal);
+            document.getElementById('emptyStateAddBtn').addEventListener('click', openNewPlanModal);
+            
+            // 编辑计划按钮
+            document.getElementById('editPlanBtn').addEventListener('click', openEditPlanModal);
+            
+            // 删除计划按钮
+            document.getElementById('deletePlanBtn').addEventListener('click', () => {
+                planToDeleteId = currentPlanId;
+                openDeleteConfirmModal();
+            });
+            
+            // 取消删除
+            document.getElementById('cancelDeleteBtn').addEventListener('click', () => {
+                confirmDeleteModal.classList.add('hidden');
+                planToDeleteId = null; // 重置删除ID
+            });
+            
+            // 确认删除
+            document.getElementById('confirmDeleteBtn').addEventListener('click', confirmDeletePlan);
+            
+            // 取消模态框
+            document.getElementById('cancelModalBtn').addEventListener('click', () => {
+                planModal.classList.add('hidden');
+            });
+            
+            // 保存计划表单
+            document.getElementById('planForm').addEventListener('submit', savePlan);
+            
+            // 主题切换按钮
+            document.getElementById('themeToggle').addEventListener('click', () => {
+                document.body.classList.toggle('dark-mode');
+                const icon = document.querySelector('#themeToggle i');
+                if (document.body.classList.contains('dark-mode')) {
+                    icon.classList.remove('fa-moon-o');
+                    icon.classList.add('fa-sun-o');
+                } else {
+                    icon.classList.remove('fa-sun-o');
+                    icon.classList.add('fa-moon-o');
+                }
+            });
+            
+            // AI生成计划按钮
+            generateAIPlanBtn.addEventListener('click', generateAIPlan);
+            
+            // 下载Excel按钮
+            downloadExcelBtn.addEventListener('click', downloadExcel);
+            
+            // 保存旅行期望（实时保存）
+            travelExpectationEl.addEventListener('input', () => {
+                const plan = getCurrentPlan();
+                if (plan) {
+                    plan.expectation = travelExpectationEl.value;
+                    saveTravelPlans();
+                }
+            });
+        }
+
+        // 初始化应用 - 确保DOM完全加载
+        document.addEventListener('DOMContentLoaded', initApp);
+    </script>
+
+
+</body></html>
+    
