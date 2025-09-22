@@ -11,6 +11,10 @@
 2. 整体管理和复盘历史及未来的全部出行规划
 
 ### 2.3 项目效果
+https://xuantianfengwu.github.io/TravelBudgetEditor/
+<img width="3110" height="1872" alt="image" src="https://github.com/user-attachments/assets/f8e589ae-038b-4ef0-a428-2031078416af" />
+<img width="3058" height="1848" alt="image" src="https://github.com/user-attachments/assets/ef0cca95-c65f-44e9-9b0e-38c738bea93b" />
+<img width="3068" height="768" alt="image" src="https://github.com/user-attachments/assets/7e044f3b-d480-45b6-ad6f-d7a5f0104af6" />
 
 
 - Creared by 豆包编程：https://www.doubao.com/thread/w04dde4dcd12911df
